@@ -4,6 +4,8 @@ import numpy as np
 import cv2
 import glob
 import os
+import random
+import tensorflow as tf
 
 import keras
 from keras.layers import Dense, Dropout, Activation, Flatten, AveragePooling2D, BatchNormalization
@@ -11,6 +13,20 @@ from keras.layers import Conv2D, MaxPooling2D
 from keras.preprocessing.image import ImageDataGenerator
 from keras.utils import to_categorical
 from keras.models import Sequential
+from keras import backend as K
+
+from time import time
+
+seed_value = 42
+
+# Set as much determinism as possible
+os.environ['PYTHONHASHSEED']=str(seed_value)
+random.seed(seed_value)
+np.random.seed(seed_value)
+tf.set_random_seed(seed_value)
+session_conf = tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
+sess = tf.Session(graph=tf.get_default_graph(), config=session_conf)
+K.set_session(sess)
 
 def read_image(filename):
     im = cv2.imread(filename)
@@ -51,14 +67,13 @@ for idx, name in enumerate([test_green, test_yellow, test_red]):
 xs_train = np.stack(xs_train, axis=0)
 xs_test = np.stack(xs_test, axis=0)
 
-
 ys_train = to_categorical(ys_train)
 ys_test = to_categorical(ys_test)
 
 # Adapted from Keras documentation
 datagen = ImageDataGenerator(
         featurewise_center=False,  # set input mean to 0 over the dataset
-        samplewise_center=True,  # set each sample mean to 0
+        samplewise_center=False,  # set each sample mean to 0
         featurewise_std_normalization=False,  # divide inputs by std of the dataset
         samplewise_std_normalization=False,  # divide each input by its std
         zca_whitening=False,  # apply ZCA whitening
@@ -81,33 +96,37 @@ datagen = ImageDataGenerator(
         # set function that will be applied on each input
         preprocessing_function=None,
         # image data format, either "channels_first" or "channels_last"
-        data_format=None,
-        # fraction of images reserved for validation (strictly between 0 and 1)
-    )
-     #   validation_split=0.2)
-
+        data_format="channels_last",
+)
 
 datagen.fit(xs_train)
 
 model = Sequential(name="tl_net")
 
-model.add(Conv2D(filters=8, kernel_size=(3, 3), activation='relu', input_shape=(normalized_h, normalized_w, 3)))
+model.add(BatchNormalization(input_shape=(normalized_h, normalized_w, 3)))
+model.add(Conv2D(filters=8, kernel_size=(3, 3)))
+model.add(BatchNormalization())
+model.add(Activation('relu'))
 model.add(Dropout(rate=0.5))
 model.add(AveragePooling2D())
 
 
-model.add(Conv2D(filters=16, kernel_size=(3, 3), activation='relu'))
+model.add(Conv2D(filters=16, kernel_size=(3, 3)))#, activation='relu'))
+model.add(BatchNormalization())
+model.add(Activation('relu'))
 model.add(Dropout(rate=0.5))
 model.add(AveragePooling2D())
 
 model.add(Flatten())
 
-model.add(Dense(units=120, activation='relu'))
+model.add(Dense(units=120)) #, activation='relu'))
+model.add(BatchNormalization())
+model.add(Activation('relu'))
 model.add(Dropout(rate=0.5))
 model.add(Dense(units=84, activation='relu'))
 model.add(Dense(units=3, activation = 'softmax'))
 
-opt = keras.optimizers.Adam(decay=1e-4)
+opt = keras.optimizers.Adam(decay=1e-6)
 
 model.compile(loss='categorical_crossentropy',
               optimizer=opt,
@@ -121,6 +140,7 @@ batch_size = 16
 model.fit_generator(
     generator=datagen.flow(xs_train, ys_train,
                  batch_size=batch_size),
+    steps_per_epoch=xs_train.shape[0]//batch_size,
     epochs=epochs,
     validation_data=(xs_test, ys_test),
     workers=4)
@@ -136,32 +156,13 @@ scores = model.evaluate(xs_test, ys_test, verbose=1)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
 
-
-from time import time
-
-xs_test_one_example = xs_test[0, ...]
-xs_test_one_example = np.expand_dims(xs_test_one_example, 0)
+num_runs = 100
 
 start = time()
-model.predict(xs_test_one_example)
+for i in range(num_runs):
+    xs_test_one_example = xs_test[i, ...]
+    xs_test_one_example = np.expand_dims(xs_test_one_example, 0)
+    model.predict(xs_test_one_example)
 duration = time() - start
 
-
-# In[50]:
-
-
-print("Predicting one image took %f ms" % (duration * 1000))
-
-
-# In[52]:
-
-
-xs_train.shape
-
-
-# In[ ]:
-
-
-
-
-
+print("Predicting one image took %f ms" % (duration * 1000 / num_runs))
