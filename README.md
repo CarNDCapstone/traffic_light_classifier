@@ -1,6 +1,10 @@
 # traffic_light_classifier
 
-### Call to run: 
+### Dataset
+
+Copied over from [another Udacity repo](https://github.com/udacity/iSDC-P5-traffic-light-classifier-starter-code). As confirmed with Udacity mentors, this dataset is OK to use for the capstone project. The data could have been provided as a git submodule, but it was copied over since there was little data, and so that users don't have to deal with submodules, and in case the other repo gets deleted.
+
+### Call to run 
 ```
 python tf_classifier.py
 ```
